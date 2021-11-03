@@ -5,7 +5,6 @@ import requests
 from urllib.parse import urlparse
 from enum import Enum
 from lxml import html
-import re
 
 
 # Order Types and Enums
