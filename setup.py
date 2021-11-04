@@ -24,5 +24,5 @@ setup(
     ],
     packages=["pymarketwatch"],
     include_package_data=True,
-    install_requires=["lxml", "requests", "urllib"]
+    install_requires=["lxml", "requests"]
 )
