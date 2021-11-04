@@ -1,16 +1,18 @@
 # Autor: bwees, based on code from https://github.com/kevindong/MarketWatch_API/
 
 import json
+from typing import DefaultDict
 import requests
 from urllib.parse import urlparse
 from enum import Enum
 from lxml import html
-
+import re
+import csv
 
 # Order Types and Enums
 class Term(Enum):
-	DAY = 'DayOrder'
-	INDEFINITE = 'Cancelled'
+	DAY = "Day"
+	INDEFINITE = "Cancelled"
 
 class PriceType(Enum):
 	MARKET = 1
@@ -18,10 +20,10 @@ class PriceType(Enum):
 	STOP = 3
 
 class OrderType(Enum):
-	BUY = 'Buy'
-	SELL = 'Sell'
-	SHORT = 'Short'
-	COVER = 'Cover'
+	BUY = "Buy"
+	SELL = "Sell"
+	SHORT = "Short"
+	COVER = "Cover"
 
 # Order structure
 class Order:
@@ -48,6 +50,11 @@ class MarketWatch:
 		self.session = requests.Session()
 		
 		self.login(email, password)
+		self.check_error()
+
+		# Get player ID
+		self.playerID = re.findall(";p=[0-9]+", self.session.get("https://www.marketwatch.com/game/"+self.game+"/portfolio").text)[0].split("=")[1]
+
 
 	# Main login flow, subject to change at any point
 	def login(self, email, password):
@@ -87,8 +94,9 @@ class MarketWatch:
 
 		self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload)
 
-		# Get player ID
-		# self.p = re.findall(";p=[0-9]+", self.session.get("https://www.marketwatch.com/game/lifetime-stock-market-game").text)[0].split("=")[1]
+	def check_error(self):
+		if self.session.get("https://www.marketwatch.com/game/"+self.game).status_code != 200:
+			raise Exception("Marketwatch Stock Market Game Down")
 
 	# Get current market price for ticker
 	def get_price(self, ticker):
@@ -162,10 +170,13 @@ class MarketWatch:
 		except:
 			return orders
 		for i in range(numberOfOrders):
-			cleanID = self._clean_text(rawOrders[0][i][4][0][0].get("data-order"))
+			try:
+				cleanID = self._clean_text(rawOrders[0][i][4][0][0].get("data-order"))
+			except:
+				cleanID = None
+
 			ticker = self._clean_text(rawOrders[0][i][0][0][0].text)
 			quantity = int(self._clean_text(rawOrders[0][i][3].text))	
-
 			orderType = self._get_order_type(self._clean_text(rawOrders[0][i][2].text))
 			priceType = self._get_price_type(self._clean_text(rawOrders[0][i][2].text))
 			price = self._get_order_price(self._clean_text(rawOrders[0][i][2].text))
@@ -206,17 +217,16 @@ class MarketWatch:
 			return float(order[(order.index('$') + 1):])
 
 	def get_positions(self):
-		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/portfolio/Holdings").content)
-		
-		rawPositions = tree.xpath("//*[@id=\"maincontent\"]/section[2]/div[1]/table/tbody")
+		position_csv = self.session.get("http://www.marketwatch.com/game/" + self.game + "/download?view=holdings&p="+self.playerID).text
+
 		positions = []
-		try:
-			numberOfPositions = len(rawPositions[0])
-		except:
-			return positions
-		for i in range(numberOfPositions):
-			currentItem = rawPositions[0][i]
-			positions.append(Position(currentItem.get('data-ticker'), self._get_order_type(currentItem.get('data-type')), int(float(currentItem.get('data-shares')))))
+		# extract all lines, skipping the header, in the given csv text
+		reader = csv.reader(position_csv.split("\n")[1:])
+		for parts in reader:
+			if len(parts) > 0:
+				# create a Position object for each ticker
+				positions.append(Position(parts[0], parts[3], int(parts[1])))
+
 		return positions
 
 	def get_portfolio_stats(self):

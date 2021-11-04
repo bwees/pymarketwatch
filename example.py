@@ -15,7 +15,7 @@ with open("creds.txt", "r") as f:
 
 
 api = MarketWatch(email, password, game, True)
+# api.buy("AAPL", 100)
 
-
-# api.cancelAllOrders()
-print(api.get_portfolio_stats())
+print(api.get_pending_orders())
+print(api.get_positions())
