@@ -237,5 +237,30 @@ class MarketWatch:
 			"value": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[1]/span")[0].text.replace("$", ""))),
 			"power": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[6]/span")[0].text.replace("$", ""))),
 			"rank": int(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/div[1]/div")[0].text.replace("$", ""))),
+			"overall_gains": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[3]/span")[0].text.replace("$", ""))),
+			"short_reserve": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[7]/span")[0].text.replace("$", ""))),
+			"overall_returns": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[4]/span")[0].text.replace("%", "")))/100,
+			"borrowed": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[8]/span")[0].text.replace("$", "")))
 		}
 		return stats
+
+	def get_game_settings(self):
+		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/settings").content)
+		settings = {
+			"game_public": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[1]/table[1]/tbody/tr/td[2]')[0].text) == "Public",
+			"portfolios_public": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[1]/table[2]/tbody/tr/td[2]')[0].text) == "Public",
+			"start_balance": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[1]/td[2]')[0].text.replace("$", ""))),
+			"commission": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[2]/td[2]')[0].text.replace("$", ""))),
+			"credit_interest_rate": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[3]/td[2]')[0].text.replace("%", "")))/100,
+			"leverage_debt_interest_rate": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[4]/td[2]')[0].text.replace("%", "")))/100,
+			"minimum_stock_price": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[5]/td[2]')[0].text.replace("$", ""))),
+			"maximum_stock_price": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[6]/td[2]')[0].text.replace("$", ""))),
+			"volume_limit": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[1]/td[2]')[0].text.replace("%", "")))/100,
+			"short_selling_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[2]/td[2]')[0].text) == "Enabled",
+			"margin_trading_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[3]/td[2]')[0].text) == "Enabled",
+			"limit_orders_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[4]/td[2]')[0].text) == "Enabled",
+			"stop_loss_orders_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[5]/td[2]')[0].text) == "Enabled",
+			"partial_share_trading_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[6]/td[2]')[0].text) == "Enabled",
+		}
+
+		return settings
