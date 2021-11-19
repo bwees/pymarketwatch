@@ -37,10 +37,11 @@ class Order:
 
 # Position Structure
 class Position:
-	def __init__(self, ticker, orderType, quantity):
+	def __init__(self, ticker, orderType, quantity, ep):
 		self.ticker = ticker
 		self.orderType = orderType
 		self.quantity = quantity
+		self.entry_price = ep
 
 # Main Class for Interacting with MarketWatch API
 class MarketWatch:
@@ -224,8 +225,9 @@ class MarketWatch:
 		reader = csv.reader(position_csv.split("\n")[1:])
 		for parts in reader:
 			if len(parts) > 0:
+				avg_entry = float(parts[5].replace("$", "")) - float(parts[6])
 				# create a Position object for each ticker
-				positions.append(Position(parts[0], parts[3], int(parts[1])))
+				positions.append(Position(parts[0], parts[3], int(parts[1]), avg_entry))
 
 		return positions
 
