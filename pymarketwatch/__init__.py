@@ -44,19 +44,14 @@ class Position:
 
 # Main Class for Interacting with MarketWatch API
 class MarketWatch:
-	def __init__(self, email, password, game, debug = False):
+	def __init__(self, email, password, game, debug = False, new_backend=True):
 		self.debug = debug
 		self.game = game
 		self.session = requests.Session()
+		self.route = "games/" if new_backend else "game/"
 		
 		self.login(email, password)
 		self.check_error()
-
-		# Get player ID
-		print("https://www.marketwatch.com/games/"+self.game+"/portfolio")
-		with open("playerID.html", "w") as f:
-			f.write(self.session.get("https://www.marketwatch.com/games/"+self.game+"/portfolio").text)
-		self.playerID = re.findall(";p=[0-9]+", self.session.get("https://www.marketwatch.com/games/"+self.game+"/portfolio").text)[0].split("=")[1]
 
 	# Main login flow, subject to change at any point
 	def login(self, email, password):
@@ -87,18 +82,17 @@ class MarketWatch:
 
 		login = self.session.post("https://sso.accounts.dowjones.com/usernamepassword/login", data=login_data).content
 		soup = BeautifulSoup(login, "html.parser")
-		print("login send")
 
 		callback_payload = {
-			"wa": soup.findAll("input", {"name": "wa"})[0]["value"].strip(),
-			"wresult": soup.findAll("input", {"name": "wresult"})[0]["value"].strip(),
-			"wctx": soup.findAll("input", {"name": "wctx"})[0]["value"].strip()
+			"wa": [soup.findAll("input", {"name": "wa"})[0]["value"].strip()],
+			"wresult": [soup.findAll("input", {"name": "wresult"})[0]["value"].strip()],
+			"wctx": [soup.findAll("input", {"name": "wctx"})[0]["value"].strip()]
 		}
-		print("login form")
-		print(self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload))
+		
+		self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload)
 
 	def check_error(self):
-		if self.session.get("https://www.marketwatch.com/game/"+self.game).status_code != 200:
+		if self.session.get("https://www.marketwatch.com/" + self.route + self.game).status_code != 200:
 			raise Exception("Marketwatch Stock Market Game Down")
 
 	# Get current market price for ticker
@@ -138,10 +132,10 @@ class MarketWatch:
 	# Get UID from ticker name
 	def _get_ticker_uid(self, ticker):
 		page = self.session.get("http://www.marketwatch.com/investing/stock/" + ticker)
-		tree = html.fromstring(page.content)
+		soup = BeautifulSoup(page.text, features="lxml")
 
 		try:
-			tickerSymbol = self._clean_text(tree.xpath('//*[@id="maincontent"]/div[2]/div[4]/mw-chart')[0].get('data-ticker'))
+			tickerSymbol = self._clean_text(soup.find_all("mw-chart")[0]["data-ticker"])
 			tickerParts = tickerSymbol.split("/")
 			return tickerParts[0]+"-"+tickerParts[2]+"-"+tickerParts[3]
 		except:
@@ -149,22 +143,22 @@ class MarketWatch:
 
 	# Execture order
 	def _submit(self, payload):
-		url = ('http://www.marketwatch.com/game/%s/trade/submitorder' % self.game)
+		url = ('http://www.marketwatch.com/' + self.route + self.game +'/trade/submitorder')
 		headers = {'Content-Type': 'application/json'}
 		response = json.loads((self.session.post(url=url, headers=headers, json=payload)).text)
 		return response["succeeded"], response["message"]
 
 	def cancel_order(self, id):
-		url = ('http://www.marketwatch.com/game/' + self.game + '/trade/cancelorder?id=' + str(id))
+		url = ('http://www.marketwatch.com/' + self.route + self.game + '/trade/cancelorder?id=' + str(id))
 		self.session.get(url)
 
 	def cancel_all_orders(self):
 		for order in self.getPendingOrders():
-			url = ('http://www.marketwatch.com/game/' + self.game + '/trade/cancelorder?id=' + str(order.id))
+			url = ('http://www.marketwatch.com/' + self.route + self.game + '/trade/cancelorder?id=' + str(order.id))
 			self.session.get(url)
 
 	def get_pending_orders(self):
-		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/portfolio").content)
+		tree = html.fromstring(self.session.get("http://www.marketwatch.com/" + self.route + self.game + "/portfolio").content)
 		rawOrders = tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[6]/mw-tabs/div[2]/div[2]/div/table/tbody")
 
 		orders = []
@@ -192,18 +186,20 @@ class MarketWatch:
 		return text.replace("\r\n", "").replace("\t", "").replace(" ", "").replace(",", "")
 
 	def _get_order_type(self, order):
-		if ("Buy" in order):
+		order = order.lower()
+		if ("buy" in order):
 			return OrderType.BUY
-		elif ("Short" in order):
+		elif ("short" in order):
 			return OrderType.SHORT
-		elif ("Cover" in order):
+		elif ("cover" in order):
 			return OrderType.COVER
-		elif ("Sell" in order):
+		elif ("sell" in order):
 			return OrderType.SELL
 		else:
 			return None
 
 	def _get_price_type(self, order):
+		order = order.lower()
 		if ("market" in order):
 			return PriceType.MARKET
 		elif ("limit" in order):
@@ -220,7 +216,12 @@ class MarketWatch:
 			return float(order[(order.index('$') + 1):])
 
 	def get_positions(self):
-		position_csv = self.session.get("http://www.marketwatch.com/game/" + self.game + "/download?view=holdings&p="+self.playerID).text
+		soup = BeautifulSoup(self.session.get("https://www.marketwatch.com/" + self.route + self.game + "/portfolio").text, features="lxml")
+
+		try:
+			position_csv = self.session.get("https://www.marketwatch.com" + soup.select("a[href*='download?view=holdings']")[0]["href"]).text
+		except IndexError:
+			return []
 
 		positions = []
 		# extract all lines, skipping the header, in the given csv text
@@ -234,37 +235,47 @@ class MarketWatch:
 		return positions
 
 	def get_portfolio_stats(self):
-		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/portfolio").content)
+		soup = BeautifulSoup(self.session.get("http://www.marketwatch.com/" + self.route + self.game + "/portfolio").content, features="lxml")
+		table = soup.find_all("div", {"class": "element--profile"})[0]
+		table = table.find_all("ul", {"class": "list"})[0]
 
+		stats_elements = table.find_all("span", {"class": "primary"})
+		stats_elements = [x.text.strip() for x in stats_elements]
 		stats = {									   
-			"cash": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[5]/span")[0].text.replace("$", ""))),
-			"value": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[1]/span")[0].text.replace("$", ""))),
-			"power": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[6]/span")[0].text.replace("$", ""))),
-			"rank": int(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/div[1]/div")[0].text.replace("$", ""))),
-			"overall_gains": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[3]/span")[0].text.replace("$", ""))),
-			"short_reserve": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[7]/span")[0].text.replace("$", ""))),
-			"overall_returns": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[4]/span")[0].text.replace("%", "")))/100,
-			"borrowed": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[8]/span")[0].text.replace("$", "")))
+			"cash": float(self._clean_text(stats_elements[0].replace("$", ""))),
+			"value": float(self._clean_text(stats_elements[4].replace("$", ""))),
+			"power": float(self._clean_text(stats_elements[5].replace("$", ""))),
+			"rank": int(self._clean_text(soup.find_all("div", {"class": "rank__number"})[0].text.strip())),
+			"overall_gains": float(self._clean_text(stats_elements[2].replace("$", ""))),
+			"overall_returns": float(self._clean_text(stats_elements[3].replace("%", "")))/100,
+			"short_reserve": float(self._clean_text(stats_elements[6].replace("$", ""))),
+			"borrowed": float(self._clean_text(stats_elements[7].replace("$", "")))
 		}
 		return stats
 
 	def get_game_settings(self):
-		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/settings").content)
+		soup = BeautifulSoup(self.session.get("http://www.marketwatch.com/" + self.route + self.game + "/settings").content, features="lxml")
+		sTable1 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[0].find_all("td", {"class": "table__cell"})]
+		sTable2 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[1].find_all("td", {"class": "table__cell"})]
+		sTable3 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[2].find_all("td", {"class": "table__cell"})]
+		sTable4 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[3].find_all("td", {"class": "table__cell"})]
+		
+
 		settings = {
-			"game_public": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[1]/table[1]/tbody/tr/td[2]')[0].text) == "Public",
-			"portfolios_public": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[1]/table[2]/tbody/tr/td[2]')[0].text) == "Public",
-			"start_balance": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[1]/td[2]')[0].text.replace("$", ""))),
-			"commission": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[2]/td[2]')[0].text.replace("$", ""))),
-			"credit_interest_rate": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[3]/td[2]')[0].text.replace("%", "")))/100,
-			"leverage_debt_interest_rate": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[4]/td[2]')[0].text.replace("%", "")))/100,
-			"minimum_stock_price": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[5]/td[2]')[0].text.replace("$", ""))),
-			"maximum_stock_price": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[1]/tbody/tr[6]/td[2]')[0].text.replace("$", ""))),
-			"volume_limit": float(self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[1]/td[2]')[0].text.replace("%", "")))/100,
-			"short_selling_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[2]/td[2]')[0].text) == "Enabled",
-			"margin_trading_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[3]/td[2]')[0].text) == "Enabled",
-			"limit_orders_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[4]/td[2]')[0].text) == "Enabled",
-			"stop_loss_orders_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[5]/td[2]')[0].text) == "Enabled",
-			"partial_share_trading_enabled": self._clean_text(tree.xpath('//*[@id="maincontent"]/div[3]/div[1]/div[2]/div[2]/table[2]/tbody/tr[6]/td[2]')[0].text) == "Enabled",
+			"game_public": self._clean_text(sTable1[1]) == "Public",
+			"portfolios_public": self._clean_text(sTable2[1]) == "Public",
+			"start_balance": float(self._clean_text(sTable3[1]).replace("$", "")),
+			"commission": float(self._clean_text(sTable3[3]).replace("$", "")),
+			"credit_interest_rate": float(self._clean_text(sTable3[5]).replace("%", ""))/100,
+			"leverage_debt_interest_rate": float(self._clean_text(sTable3[7]).replace("%", ""))/100,
+			"minimum_stock_price": float(self._clean_text(sTable3[9]).replace("$", "")),
+			"maximum_stock_price": float(self._clean_text(sTable3[11]).replace("$", "")),
+			"volume_limit": float(self._clean_text(sTable4[1]).replace("%", ""))/100,
+			"short_selling_enabled": self._clean_text(sTable4[3]) == "Enabled",
+			"margin_trading_enabled": self._clean_text(sTable4[5]) == "Enabled",
+			"limit_orders_enabled": self._clean_text(sTable4[7]) == "Enabled",
+			"stop_loss_orders_enabled": self._clean_text(sTable4[9]) == "Enabled",
+			"partial_share_trading_enabled": self._clean_text(sTable4[11]) == "Enabled",
 		}
 
 		return settings
