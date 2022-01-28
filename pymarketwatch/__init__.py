@@ -1,13 +1,12 @@
 # Autor: bwees, based on code from https://github.com/kevindong/MarketWatch_API/
 
 import json
-from typing import DefaultDict
 import requests
 from urllib.parse import urlparse
 from enum import Enum
-from lxml import html
 import re
 import csv
+from bs4 import BeautifulSoup
 
 # Order Types and Enums
 class Term(Enum):
@@ -54,8 +53,10 @@ class MarketWatch:
 		self.check_error()
 
 		# Get player ID
-		self.playerID = re.findall(";p=[0-9]+", self.session.get("https://www.marketwatch.com/game/"+self.game+"/portfolio").text)[0].split("=")[1]
-
+		print("https://www.marketwatch.com/games/"+self.game+"/portfolio")
+		with open("playerID.html", "w") as f:
+			f.write(self.session.get("https://www.marketwatch.com/games/"+self.game+"/portfolio").text)
+		self.playerID = re.findall(";p=[0-9]+", self.session.get("https://www.marketwatch.com/games/"+self.game+"/portfolio").text)[0].split("=")[1]
 
 	# Main login flow, subject to change at any point
 	def login(self, email, password):
@@ -84,16 +85,17 @@ class MarketWatch:
 			"_intstate": "deprecated"
 		}
 
-		login = self.session.post("https://sso.accounts.dowjones.com/usernamepassword/login", data=login_data)
-		tree = html.fromstring(login.content)
+		login = self.session.post("https://sso.accounts.dowjones.com/usernamepassword/login", data=login_data).content
+		soup = BeautifulSoup(login, "html.parser")
+		print("login send")
 
 		callback_payload = {
-			"wa": tree.xpath("//input[@name='wa']/@value"),
-			"wresult": tree.xpath("//input[@name='wresult']/@value"),
-			"wctx": tree.xpath("//input[@name='wctx']/@value")
+			"wa": soup.findAll("input", {"name": "wa"})[0]["value"].strip(),
+			"wresult": soup.findAll("input", {"name": "wresult"})[0]["value"].strip(),
+			"wctx": soup.findAll("input", {"name": "wctx"})[0]["value"].strip()
 		}
-
-		self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload)
+		print("login form")
+		print(self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload))
 
 	def check_error(self):
 		if self.session.get("https://www.marketwatch.com/game/"+self.game).status_code != 200:
@@ -225,7 +227,7 @@ class MarketWatch:
 		reader = csv.reader(position_csv.split("\n")[1:])
 		for parts in reader:
 			if len(parts) > 0:
-				avg_entry = float(parts[5].replace("$", "")) - float(parts[6])
+				avg_entry = float(parts[4].replace("$", "")) - float(parts[5])
 				# create a Position object for each ticker
 				positions.append(Position(parts[0], parts[3], int(parts[1]), avg_entry))
 
@@ -234,15 +236,15 @@ class MarketWatch:
 	def get_portfolio_stats(self):
 		tree = html.fromstring(self.session.get("http://www.marketwatch.com/game/" + self.game + "/portfolio").content)
 
-		stats = {
-			"cash": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[5]/span")[0].text.replace("$", ""))),
-			"value": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[1]/span")[0].text.replace("$", ""))),
-			"power": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[6]/span")[0].text.replace("$", ""))),
-			"rank": int(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/div[1]/div")[0].text.replace("$", ""))),
-			"overall_gains": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[3]/span")[0].text.replace("$", ""))),
-			"short_reserve": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[7]/span")[0].text.replace("$", ""))),
-			"overall_returns": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[4]/span")[0].text.replace("%", "")))/100,
-			"borrowed": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[3]/div[1]/div[2]/ul/li[8]/span")[0].text.replace("$", "")))
+		stats = {									   
+			"cash": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[5]/span")[0].text.replace("$", ""))),
+			"value": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[1]/span")[0].text.replace("$", ""))),
+			"power": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[6]/span")[0].text.replace("$", ""))),
+			"rank": int(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/div[1]/div")[0].text.replace("$", ""))),
+			"overall_gains": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[3]/span")[0].text.replace("$", ""))),
+			"short_reserve": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[7]/span")[0].text.replace("$", ""))),
+			"overall_returns": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[4]/span")[0].text.replace("%", "")))/100,
+			"borrowed": float(self._clean_text(tree.xpath("//*[@id='maincontent']/div[5]/div[1]/div[2]/ul/li[8]/span")[0].text.replace("$", "")))
 		}
 		return stats
 
