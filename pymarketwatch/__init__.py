@@ -7,6 +7,7 @@ from enum import Enum
 import re
 import csv
 from bs4 import BeautifulSoup
+from lxml import html
 
 # Order Types and Enums
 class Term(Enum):
@@ -83,6 +84,12 @@ class MarketWatch:
 		login = self.session.post("https://sso.accounts.dowjones.com/usernamepassword/login", data=login_data).content
 		soup = BeautifulSoup(login, "html.parser")
 
+		try:
+			soup.findAll("input", {"name": "wa"})[0]
+		except:
+			m = json.loads(login)["message"]
+			raise Exception("Login Failed: " + m)
+		
 		callback_payload = {
 			"wa": [soup.findAll("input", {"name": "wa"})[0]["value"].strip()],
 			"wresult": [soup.findAll("input", {"name": "wresult"})[0]["value"].strip()],
