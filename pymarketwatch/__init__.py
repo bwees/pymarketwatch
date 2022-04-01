@@ -15,9 +15,9 @@ class Term(Enum):
 	INDEFINITE = "Cancelled"
 
 class PriceType(Enum):
-	MARKET = 1
-	LIMIT = 2
-	STOP = 3
+	MARKET = "Market"
+	LIMIT = "Limit"
+	STOP = "Stop"
 
 class OrderType(Enum):
 	BUY = "Buy"
@@ -50,7 +50,7 @@ class MarketWatch:
 		self.game = game
 		self.session = requests.Session()
 		self.route = "games/" if new_backend else "game/"
-		
+
 		self.login(email, password)
 		self.check_error()
 
@@ -89,13 +89,13 @@ class MarketWatch:
 		except:
 			m = json.loads(login)["message"]
 			raise Exception("Login Failed: " + m)
-		
+
 		callback_payload = {
 			"wa": [soup.findAll("input", {"name": "wa"})[0]["value"].strip()],
 			"wresult": [soup.findAll("input", {"name": "wresult"})[0]["value"].strip()],
 			"wctx": [soup.findAll("input", {"name": "wctx"})[0]["value"].strip()]
 		}
-		
+
 		self.session.post("https://sso.accounts.dowjones.com/login/callback", data=callback_payload)
 
 	def check_error(self):
@@ -129,11 +129,27 @@ class MarketWatch:
 	# Payload creation for order execution
 	def _create_payload(self, ticker, shares, term, priceType, price, orderType):
 		ticker = self._get_ticker_uid(ticker)
-		payload = [{"Fuid": ticker, "Shares": str(shares), "Type": orderType.value, "Term": term.value}]
-		if (priceType == PriceType.LIMIT):
-			payload[0]['Limit'] = str(price)
-		if (priceType == PriceType.STOP):
-			payload[0]['Stop'] = str(price)
+
+		# Get form payload
+		r = self.session.get("https://www.marketwatch.com/" + self.route + self.game + "/tradeorder?chartingSymbol=" + ticker)
+
+		# Parse form payload
+		soup = BeautifulSoup(r.content, "html.parser")
+		form = soup.findAll("form")[0]
+
+		# with form payload
+		payload = {
+			"djid":form["data-djkey"],
+			"ledgerId":form["data-pub"],
+			"tradeType":orderType.value,
+			"shares":shares,
+			"expiresEndOfDay": term == Term.DAY,
+			"orderType":priceType.value
+		}
+
+		if (priceType == PriceType.LIMIT or priceType == PriceType.STOP):
+			payload['limitStopPrice'] = str(price)
+
 		return self._submit(payload)
 
 	# Get UID from ticker name
@@ -143,17 +159,17 @@ class MarketWatch:
 
 		try:
 			tickerSymbol = self._clean_text(soup.find_all("mw-chart")[0]["data-ticker"])
-			tickerParts = tickerSymbol.split("/")
-			return tickerParts[0]+"-"+tickerParts[2]+"-"+tickerParts[3]
+			return tickerSymbol
+
 		except:
 			return None
 
 	# Execture order
 	def _submit(self, payload):
-		url = ('http://www.marketwatch.com/' + self.route + self.game +'/trade/submitorder')
+		url = 'https://vse-api.marketwatch.com/v1/games/' + self.game +'/ledgers/' + payload["ledgerId"] + '/trades'
 		headers = {'Content-Type': 'application/json'}
-		response = json.loads((self.session.post(url=url, headers=headers, json=payload)).text)
-		return response["succeeded"], response["message"]
+		response = json.loads(self.session.post(url=url, headers=headers, json=payload).text)
+		return response["data"]["status"]
 
 	def cancel_order(self, id):
 		url = ('http://www.marketwatch.com/' + self.route + self.game + '/trade/cancelorder?id=' + str(id))
@@ -180,13 +196,13 @@ class MarketWatch:
 				cleanID = None
 
 			ticker = self._clean_text(rawOrders[0][i][0][0][0].text)
-			quantity = int(self._clean_text(rawOrders[0][i][3].text))	
+			quantity = int(self._clean_text(rawOrders[0][i][3].text))
 			orderType = self._get_order_type(self._clean_text(rawOrders[0][i][2].text))
 			priceType = self._get_price_type(self._clean_text(rawOrders[0][i][2].text))
 			price = self._get_order_price(self._clean_text(rawOrders[0][i][2].text))
 
 			orders.append(Order(cleanID, ticker, quantity, orderType, priceType, price))
-	
+
 		return orders
 
 	def _clean_text(self, text):
@@ -248,7 +264,7 @@ class MarketWatch:
 
 		stats_elements = table.find_all("span", {"class": "primary"})
 		stats_elements = [x.text.strip() for x in stats_elements]
-		stats = {									   
+		stats = {
 			"cash": float(self._clean_text(stats_elements[0].replace("$", "").replace(",", ""))),
 			"value": float(self._clean_text(stats_elements[4].replace("$", "").replace(",", ""))),
 			"power": float(self._clean_text(stats_elements[5].replace("$", "").replace(",", ""))),
@@ -266,7 +282,7 @@ class MarketWatch:
 		sTable2 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[1].find_all("td", {"class": "table__cell"})]
 		sTable3 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[2].find_all("td", {"class": "table__cell"})]
 		sTable4 = [x.text.strip() for x in soup.find_all("table", {"class": "portfolio-options"})[3].find_all("td", {"class": "table__cell"})]
-		
+
 
 		settings = {
 			"game_public": self._clean_text(sTable1[1]) == "Public",
