@@ -235,7 +235,7 @@ class MarketWatch:
 		reader = csv.reader(position_csv.split("\n")[1:])
 		for parts in reader:
 			if len(parts) > 0:
-				avg_entry = float(parts[4].replace("$", "")) - float(parts[5])
+				avg_entry = float(parts[4].replace("$", "").replace(",", "")) - float(parts[5])
 				# create a Position object for each ticker
 				positions.append(Position(parts[0], parts[3], int(parts[1]), avg_entry))
 
@@ -249,14 +249,14 @@ class MarketWatch:
 		stats_elements = table.find_all("span", {"class": "primary"})
 		stats_elements = [x.text.strip() for x in stats_elements]
 		stats = {									   
-			"cash": float(self._clean_text(stats_elements[0].replace("$", ""))),
-			"value": float(self._clean_text(stats_elements[4].replace("$", ""))),
-			"power": float(self._clean_text(stats_elements[5].replace("$", ""))),
+			"cash": float(self._clean_text(stats_elements[0].replace("$", "").replace(",", ""))),
+			"value": float(self._clean_text(stats_elements[4].replace("$", "").replace(",", ""))),
+			"power": float(self._clean_text(stats_elements[5].replace("$", "").replace(",", ""))),
 			"rank": int(self._clean_text(soup.find_all("div", {"class": "rank__number"})[0].text.strip())),
-			"overall_gains": float(self._clean_text(stats_elements[2].replace("$", ""))),
+			"overall_gains": float(self._clean_text(stats_elements[2].replace("$", "").replace(",", ""))),
 			"overall_returns": float(self._clean_text(stats_elements[3].replace("%", "")))/100,
-			"short_reserve": float(self._clean_text(stats_elements[6].replace("$", ""))),
-			"borrowed": float(self._clean_text(stats_elements[7].replace("$", "")))
+			"short_reserve": float(self._clean_text(stats_elements[6].replace("$", "").replace(",", ""))),
+			"borrowed": float(self._clean_text(stats_elements[7].replace("$", "").replace(",", "")))
 		}
 		return stats
 
@@ -271,12 +271,12 @@ class MarketWatch:
 		settings = {
 			"game_public": self._clean_text(sTable1[1]) == "Public",
 			"portfolios_public": self._clean_text(sTable2[1]) == "Public",
-			"start_balance": float(self._clean_text(sTable3[1]).replace("$", "")),
-			"commission": float(self._clean_text(sTable3[3]).replace("$", "")),
+			"start_balance": float(self._clean_text(sTable3[1]).replace("$", "").replace(",", "")),
+			"commission": float(self._clean_text(sTable3[3]).replace("$", "").replace(",", "")),
 			"credit_interest_rate": float(self._clean_text(sTable3[5]).replace("%", ""))/100,
 			"leverage_debt_interest_rate": float(self._clean_text(sTable3[7]).replace("%", ""))/100,
-			"minimum_stock_price": float(self._clean_text(sTable3[9]).replace("$", "")),
-			"maximum_stock_price": float(self._clean_text(sTable3[11]).replace("$", "")),
+			"minimum_stock_price": float(self._clean_text(sTable3[9]).replace("$", "").replace(",", "")),
+			"maximum_stock_price": float(self._clean_text(sTable3[11]).replace("$", "").replace(",", "")),
 			"volume_limit": float(self._clean_text(sTable4[1]).replace("%", ""))/100,
 			"short_selling_enabled": self._clean_text(sTable4[3]) == "Enabled",
 			"margin_trading_enabled": self._clean_text(sTable4[5]) == "Enabled",
