@@ -3,7 +3,7 @@ A Python libary to interact with the MarketWatch Stock Market Game
 Based on code from https://github.com/kevindong/MarketWatch_API/
 
 
-‼️ **NOTE: Unfortunately Marketwatch has decided to change their login system once again. I am accepting PRs to fix the login system but until then this library does not function.**
+‼️ **NOTE: Unfortunately Marketwatch has decided to change their login system once again. There is a fork available at https://github.com/antoinebou12/marketwatch that is under active development.
 
 ### Example
 ```
